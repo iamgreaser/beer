@@ -245,35 +245,6 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 		}
 	}
 
-	// Load imports
-	Elf32_Shdr *sh_symstr = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".strtab");
-	char *symstr = malloc(sh_symstr->sh_size);
-	fseek(fp, sh_symstr->sh_offset, SEEK_SET);
-	fread(symstr, 1, sh_symstr->sh_size, fp);
-
-	Elf32_Shdr *sh_symtab = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".symtab");
-	int st_ents = sh_symtab->sh_size / sizeof(Elf32_Sym);
-	printf("Symbol table (%i symbols):\n", st_ents);
-	Elf32_Sym *st = malloc(sh_symtab->sh_size);
-	fseek(fp, sh_symtab->sh_offset, SEEK_SET);
-	fread(st, 1, sh_symtab->sh_size, fp);
-
-	for(i = 0; i < st_ents; i++)
-	{
-		printf("- %3i: type %08X [%s]\n", i,
-			st[i].st_info,
-			symstr + st[i].st_name);
-
-		int bind = ELF32_ST_BIND(st[i].st_info);
-		int type = ELF32_ST_TYPE(st[i].st_info);
-
-		if((bind == STB_GLOBAL || bind == STB_WEAK) && type == STT_FUNC)
-		{
-			printf("  - usable symbol %08X %08X\n",
-				st[i].st_value, st[i].st_size);
-		}
-	}
-
 	// Load dynamic crap
 	Elf32_Shdr *sh_dynamic = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".dynamic");
 	int dyn_ents = sh_dynamic->sh_size / sizeof(Elf32_Dyn);
@@ -311,89 +282,35 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 
 		switch(dyn[i].d_tag)
 		{
-			case DT_NEEDED:
-				printf("\t- DT_NEEDED [%s]\n", dynstr + dyn[i].d_un.d_val);
-				break;
-			case DT_PLTRELSZ:
-				printf("\t- DT_PLTRELSZ %i\n", dyn[i].d_un.d_val);
-				break;
-			case DT_PLTGOT:
-				printf("\t- DT_PLTGOT 0x%08X\n", dyn[i].d_un.d_val);
-				break;
-			case DT_HASH:
-				printf("\t- DT_HASH 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_STRTAB:
-				printf("\t- DT_STRTAB 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_SYMTAB:
-				printf("\t- DT_SYMTAB 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_RELA:
-				printf("\t- DT_RELA 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_RELASZ:
-				printf("\t- DT_RELASZ %i\n", dyn[i].d_un.d_val);
-				break;
-			case DT_RELAENT:
-				printf("\t- DT_RELAENT %i\n", dyn[i].d_un.d_val);
-				break;
-			case DT_STRSZ:
-				printf("\t- DT_STRSZ %i\n", dyn[i].d_un.d_val);
-				break;
-			case DT_SYMENT:
-				printf("\t- DT_SYMENT %i\n", dyn[i].d_un.d_val);
-				break;
-			case DT_INIT:
-				printf("\t- DT_INIT 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_FINI:
-				printf("\t- DT_FINI 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_SONAME:
-				printf("\t- DT_SONAME [%s]\n", dynstr + dyn[i].d_un.d_val);
-				break;
-			case DT_RPATH:
-				printf("\t- DT_RPATH [%s]\n", dynstr + dyn[i].d_un.d_val);
-				break;
-			case DT_SYMBOLIC:
-				printf("\t- DT_SYMBOLIC\n");
-				break;
-			case DT_REL:
-				printf("\t- DT_REL 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_RELSZ:
-				printf("\t- DT_RELSZ %i\n", dyn[i].d_un.d_val);
-				break;
-			case DT_RELENT:
-				printf("\t- DT_RELENT %i\n", dyn[i].d_un.d_val);
-				break;
+			case DT_NEEDED: printf("\t- DT_NEEDED [%s]\n", dynstr + dyn[i].d_un.d_val); break;
+			case DT_PLTRELSZ: printf("\t- DT_PLTRELSZ %i\n", dyn[i].d_un.d_val); break;
+			case DT_PLTGOT: printf("\t- DT_PLTGOT 0x%08X\n", dyn[i].d_un.d_val); break;
+			case DT_HASH: printf("\t- DT_HASH 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_STRTAB: printf("\t- DT_STRTAB 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_SYMTAB: printf("\t- DT_SYMTAB 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_RELA: printf("\t- DT_RELA 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_RELASZ: printf("\t- DT_RELASZ %i\n", dyn[i].d_un.d_val); break;
+			case DT_RELAENT: printf("\t- DT_RELAENT %i\n", dyn[i].d_un.d_val); break;
+			case DT_STRSZ: printf("\t- DT_STRSZ %i\n", dyn[i].d_un.d_val); break;
+			case DT_SYMENT: printf("\t- DT_SYMENT %i\n", dyn[i].d_un.d_val); break;
+			case DT_INIT: printf("\t- DT_INIT 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_FINI: printf("\t- DT_FINI 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_SONAME: printf("\t- DT_SONAME [%s]\n", dynstr + dyn[i].d_un.d_val); break;
+			case DT_RPATH: printf("\t- DT_RPATH [%s]\n", dynstr + dyn[i].d_un.d_val); break;
+			case DT_SYMBOLIC: printf("\t- DT_SYMBOLIC\n"); break;
+			case DT_REL: printf("\t- DT_REL 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_RELSZ: printf("\t- DT_RELSZ %i\n", dyn[i].d_un.d_val); break;
+			case DT_RELENT: printf("\t- DT_RELENT %i\n", dyn[i].d_un.d_val); break;
 			case DT_PLTREL:
 				printf("\t- DT_PLTREL 0x%08X %s\n", dyn[i].d_un.d_val,
 					dyn[i].d_un.d_val == DT_RELA ? "DT_RELA"
 					: dyn[i].d_un.d_val == DT_REL ? "DT_REL"
 					: "?");
 				break;
-			case DT_DEBUG:
-				printf("\t- DT_DEBUG 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_TEXTREL:
-				printf("\t- DT_TEXTREL\n");
-				break;
-			case DT_JMPREL:
-				printf("\t- DT_JMPREL 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_BIND_NOW:
-				printf("\t- DT_BIND_NOW\n");
-				break;
-			/*
-			case DT_:
-				printf("\t- DT_ 0x%08X\n", dyn[i].d_un.d_ptr);
-				break;
-			case DT_:
-				printf("\t- DT_ 0x%08X\n", dyn[i].d_un.d_val);
-				break;
-			*/
+			case DT_DEBUG: printf("\t- DT_DEBUG 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_TEXTREL: printf("\t- DT_TEXTREL\n"); break;
+			case DT_JMPREL: printf("\t- DT_JMPREL 0x%08X\n", dyn[i].d_un.d_ptr); break;
+			case DT_BIND_NOW: printf("\t- DT_BIND_NOW\n"); break;
 		}
 	}
 
