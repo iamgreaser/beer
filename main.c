@@ -105,12 +105,6 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 		return NULL;
 	}
 
-	if(hdr.e_shentsize != sizeof(Elf32_Shdr))
-	{
-		printf("load_elf_fp: invalid section header entry size\n");
-		return NULL;
-	}
-
 	if(hdr.e_phentsize != sizeof(Elf32_Phdr))
 	{
 		printf("load_elf_fp: invalid program header entry size\n");
@@ -159,7 +153,7 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 	}
 
 	// now merge
-	for(i = 0; i < hdr.e_phnum-1; i++)
+	for(i = 0; i < hdr.e_phnum; i++)
 	if(ch[i].p_type != PT_NULL)
 	{
 		Elf32_Addr a0s = ch[i].p_vaddr;
@@ -305,8 +299,7 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 	}
 
 	printf("Relocations (%i entries):\n", relents);
-	// XXX 4 is hardcoded, TODO find where we get the 4 from
-	for(i = 0; i < 4; i++)
+	for(i = 0; i < relents; i++)
 	{
 		//
 		printf("- %5i: offs %08X, info %08X, val %08X\n", i,
@@ -315,10 +308,13 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 	}
 
 	// attempt to run .init
-	printf("Running .init\n");
-	printf("Entry point: 0x%p\n", v_init);
-	((void (*)(void))v_init)();
-	printf("MIRACLE: It didn't crash!\n");
+	if(v_init != NULL)
+	{
+		printf("Running .init\n");
+		printf("Entry point: 0x%p\n", v_init);
+		((void (*)(void))v_init)();
+		printf("MIRACLE: It didn't crash!\n");
+	}
 
 	// attempt to run entry point
 	printf("Running ELF\n");
@@ -328,10 +324,13 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 	printf("MIRACLE: It didn't crash!\n");
 
 	// attempt to run .fini
-	printf("Running .fini\n");
-	printf("Entry point: 0x%p\n", v_fini);
-	((void (*)(void))v_fini)();
-	printf("MIRACLE: It didn't crash!\n");
+	if(v_fini != NULL)
+	{
+		printf("Running .fini\n");
+		printf("Entry point: 0x%p\n", v_fini);
+		((void (*)(void))v_fini)();
+		printf("MIRACLE: It didn't crash!\n");
+	}
 
 	// clean up
 	free(ph); free(ch);
