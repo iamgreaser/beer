@@ -322,6 +322,29 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 			rel[i].r_offset, rel[i].r_info);
 	}
 
+	// attempt to run .init
+	printf("Running .init\n");
+	Elf32_Shdr *sh_init = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".init");
+	void *v_init = (void *)(sh_init->sh_addr);
+	printf("Entry point: 0x%p\n", v_init);
+	((void (*)(void))v_init)();
+	printf("MIRACLE: It didn't crash!\n");
+
+	// attempt to run entry point
+	printf("Running ELF\n");
+	void *ent = (void *)(hdr.e_entry);
+	printf("Entry point: 0x%p\n", ent);
+	((void (*)(void))ent)();
+	printf("MIRACLE: It didn't crash!\n");
+
+	// attempt to run .fini
+	printf("Running .fini\n");
+	Elf32_Shdr *sh_fini = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".fini");
+	void *v_fini = (void *)(sh_fini->sh_addr);
+	printf("Entry point: 0x%p\n", v_fini);
+	((void (*)(void))v_fini)();
+	printf("MIRACLE: It didn't crash!\n");
+
 	// clean up
 	free(ph); free(sh); free(ch); free(stab);
 	return ret;
@@ -344,11 +367,6 @@ int main(int argc, char *argv[])
 	if(elf == NULL)
 		return 1;
 	
-	printf("Running ELF\n");
-	void *ent = (void *)(elf->e_entry);
-	printf("Entry point: 0x%p\n", ent);
-
-	//((void (*)(void))ent)();
 
 	return 0;
 }
