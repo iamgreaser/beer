@@ -55,21 +55,14 @@ void stub(void **hack)
 	abort();
 }
 
-Elf32_Shdr *sh_find_ent_by_name(Elf32_Shdr *sh, const char *stab, int shnum, const char *name)
-{
-	int i;
-
-	for(i = 0; i < shnum; i++)
-		if(!strcmp(stab + sh[i].sh_name, name))
-			return &sh[i];
-	
-	return NULL;
-}
-
 Elf32_Ehdr *load_elf_fp(FILE *fp)
 {
 	Elf32_Ehdr *ret = NULL;
 	Elf32_Ehdr hdr;
+	Elf32_Dyn *dyn = NULL;
+	void *v_init = NULL;
+	void *v_fini = NULL;
+	int dyn_ents = 0;
 	int i, j;
 
 	const int mempad = (1<<16);
@@ -124,25 +117,6 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 		return NULL;
 	}
 
-	// Load sections + string table
-	Elf32_Shdr *sh = malloc(sizeof(Elf32_Shdr) * hdr.e_shnum);
-	fseek(fp, hdr.e_shoff, SEEK_SET);
-	fread(sh, 1, hdr.e_shnum * sizeof(Elf32_Shdr), fp);
-
-	int stab_len = sh[hdr.e_shstrndx].sh_size;
-	char *stab = malloc(stab_len);
-	fseek(fp, sh[hdr.e_shstrndx].sh_offset, SEEK_SET);
-	fread(stab, 1, stab_len, fp);
-
-	printf("Section headers:\n");
-	for(i = 0; i < hdr.e_shnum; i++)
-	{
-		printf("- Section header %3i, type %08X, virt %08X, size %08X: [%s]\n",
-			i, sh[i].sh_type,
-			sh[i].sh_addr, sh[i].sh_size,
-			stab + sh[i].sh_name);
-	}
-
 	// Load program headers
 	Elf32_Phdr *ph = malloc(sizeof(Elf32_Phdr) * hdr.e_phnum);
 	fseek(fp, hdr.e_phoff, SEEK_SET);
@@ -157,6 +131,13 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 			ph[i].p_vaddr, ph[i].p_offset,
 			ph[i].p_filesz, ph[i].p_memsz,
 			ph[i].p_align, ph[i].p_flags);
+		switch(ph[i].p_type)
+		{
+			case PT_DYNAMIC:
+				dyn = (Elf32_Dyn *)(ph[i].p_vaddr);
+				dyn_ents = ph[i].p_memsz / sizeof(Elf32_Dyn);
+				break;
+		}
 	}
 
 	// Merge the pages because ELF page granularity is shit
@@ -245,16 +226,13 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 		}
 	}
 
-	// Load dynamic crap
-	Elf32_Shdr *sh_dynamic = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".dynamic");
-	int dyn_ents = sh_dynamic->sh_size / sizeof(Elf32_Dyn);
-	printf("Dynamic linking info (%i entries):\n", dyn_ents);
-	Elf32_Dyn *dyn = (Elf32_Dyn *)(sh_dynamic->sh_addr);
-
 	// Find mandatory values in .dynamic
+	printf("Dynamic linking info (%i entries):\n", dyn_ents);
 	const char *dynstr = NULL;
 	Elf32_Sym *dynsym = NULL;
 	Elf32_Rel *rel = NULL;
+	Elf32_Rel *jmprel = NULL;
+	Elf32_Addr *pltgot = NULL;
 	int relents = 0;
 
 	for(i = 0; i < dyn_ents; i++)
@@ -271,6 +249,18 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 			break;
 		case DT_REL:
 			rel = (Elf32_Rel *)(dyn[i].d_un.d_ptr);
+			break;
+		case DT_JMPREL:
+			jmprel = (Elf32_Rel *)(dyn[i].d_un.d_ptr);
+			break;
+		case DT_PLTGOT:
+			pltgot = (Elf32_Addr *)(dyn[i].d_un.d_ptr);
+			break;
+		case DT_INIT:
+			v_init = (void *)(dyn[i].d_un.d_ptr);
+			break;
+		case DT_FINI:
+			v_fini = (void *)(dyn[i].d_un.d_ptr);
 			break;
 	}
 
@@ -315,17 +305,17 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 	}
 
 	printf("Relocations (%i entries):\n", relents);
-	for(i = 0; i < relents; i++)
+	// XXX 4 is hardcoded, TODO find where we get the 4 from
+	for(i = 0; i < 4; i++)
 	{
 		//
-		printf("- %5i: offs %08X, info %08X\n", i,
-			rel[i].r_offset, rel[i].r_info);
+		printf("- %5i: offs %08X, info %08X, val %08X\n", i,
+			jmprel[i].r_offset, jmprel[i].r_info,
+			*(uint32_t *)(jmprel[i].r_offset));
 	}
 
 	// attempt to run .init
 	printf("Running .init\n");
-	Elf32_Shdr *sh_init = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".init");
-	void *v_init = (void *)(sh_init->sh_addr);
 	printf("Entry point: 0x%p\n", v_init);
 	((void (*)(void))v_init)();
 	printf("MIRACLE: It didn't crash!\n");
@@ -339,14 +329,12 @@ Elf32_Ehdr *load_elf_fp(FILE *fp)
 
 	// attempt to run .fini
 	printf("Running .fini\n");
-	Elf32_Shdr *sh_fini = sh_find_ent_by_name(sh, stab, hdr.e_shnum, ".fini");
-	void *v_fini = (void *)(sh_fini->sh_addr);
 	printf("Entry point: 0x%p\n", v_fini);
 	((void (*)(void))v_fini)();
 	printf("MIRACLE: It didn't crash!\n");
 
 	// clean up
-	free(ph); free(sh); free(ch); free(stab);
+	free(ph); free(ch);
 	return ret;
 }
 
